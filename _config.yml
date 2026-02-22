@@ -6,7 +6,7 @@ email: your-email@example.com
 description: "這裡是我的個人博客，記錄技術與生活"
 keyword: "博客, 個人網站, 技術, Web, JavaScript, 前端"
 url: "https://gureaisu.github.io" # your host, for absolute URL
-baseurl: "/cheng.github.io" # for example, '/blog' if your blog hosted on 'host/blog'
+baseurl: "" # for example, '/blog' if your blog hosted on 'host/blog'
 
 # Publish posts or collection documents with a future date.
 future: true
