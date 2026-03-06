@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WebSocket 測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1e1e1e; color: #eee; }
+        h2 { color: #61dafb; }
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+        button {
+            padding: 8px 16px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 14px; font-weight: bold;
+        }
+        #btnConnect    { background: #28a745; color: white; }
+        #btnLogin      { background: #007bff; color: white; }
+        #btnHeartbeat  { background: #6f42c1; color: white; }
+        #btnLbll       { background: #fd7e14; color: white; }
+        #btnLbrl       { background: #fd7e14; color: white; }
+        #btnEnter      { background: #20c997; color: white; }
+        #btnDisconnect { background: #dc3545; color: white; }
+        #btnClear      { background: #555; color: white; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        #status {
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 13px; margin-bottom: 12px;
+            background: #dc3545;
+        }
+        #status.connected { background: #28a745; }
+        #log {
+            background: #111; border: 1px solid #333; border-radius: 8px;
+            padding: 12px; height: 420px; overflow-y: auto;
+            font-family: monospace; font-size: 13px; white-space: pre-wrap;
+        }
+        .sent     { color: #61dafb; }
+        .received { color: #98c379; }
+        .system   { color: #e5c07b; }
+        .error    { color: #e06c75; }
+    </style>
+</head>
+<body>
+<h2>🚀 Game Server WebSocket 測試</h2>
+
+<div id="status">● 未連線</div>
+
+<div class="btn-group">
+    <button id="btnConnect"    onclick="connect()">🔌 連線</button>
+    <button id="btnLogin"      onclick="login()"      disabled>👤 登入</button>
+    <button id="btnHeartbeat"  onclick="heartbeat()"  disabled>💓 心跳</button>
+    <button id="btnLbll"       onclick="getLevelList()" disabled>📋 級別列表</button>
+    <button id="btnLbrl"       onclick="getRoomList()"  disabled>🏠 房間列表</button>
+    <button id="btnEnter"      onclick="enterRoom()"    disabled>🎮 進入遊戲房</button>
+    <button id="btnDisconnect" onclick="disconnect()"   disabled>🔴 斷線</button>
+    <button id="btnClear"      onclick="clearLog()">🗑️ 清除</button>
+</div>
+
+<div id="log"></div>
+
+<script>
+let ws = null;
+let heartbeatTimer = null;
+
+function log(msg, type = 'system') {
+    const div = document.getElementById('log');
+    const line = document.createElement('div');
+    line.className = type;
+    const time = new Date().toLocaleTimeString();
+    line.textContent = `[${time}] ${msg}`;
+    div.appendChild(line);
+    div.scrollTop = div.scrollHeight;
+}
+
+function setConnected(isConnected) {
+    const status = document.getElementById('status');
+    status.textContent = isConnected ? '● 已連線' : '● 未連線';
+    status.className = isConnected ? 'connected' : '';
+
+    document.getElementById('btnConnect').disabled    = isConnected;
+    document.getElementById('btnLogin').disabled      = !isConnected;
+    document.getElementById('btnHeartbeat').disabled  = !isConnected;
+    document.getElementById('btnLbll').disabled       = !isConnected;
+    document.getElementById('btnLbrl').disabled       = !isConnected;
+    document.getElementById('btnEnter').disabled      = !isConnected;
+    document.getElementById('btnDisconnect').disabled = !isConnected;
+}
+
+function send(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const str = JSON.stringify(obj);
+        ws.send(str);
+        log('↑ 送出: ' + str, 'sent');
+    } else {
+        log('⚠️ 尚未連線', 'error');
+    }
+}
+
+function connect() {
+    ws = new WebSocket('ws://127.0.0.1:10001');
+
+    ws.onopen = () => {
+        log('✅ 連線成功 ws://127.0.0.1:10001', 'system');
+        setConnected(true);
+        // 自動每 30 秒送心跳
+        heartbeatTimer = setInterval(() => {
+            send({ cmd: 'sschk', data: '' });
+        }, 30000);
+    };
+
+    ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        log('↓ 收到 [' + msg.cmd + ']: ' + JSON.stringify(msg.data ?? msg), 'received');
+    };
+
+    ws.onclose = () => {
+        log('❌ 連線關閉', 'error');
+        setConnected(false);
+        clearInterval(heartbeatTimer);
+    };
+
+    ws.onerror = () => {
+        log('⚠️ 連線錯誤（伺服器未啟動？）', 'error');
+    };
+}
+
+function login()        { send({ cmd: 'ln',    data: { account: 'test', key: 'testkey123' } }); }
+function heartbeat()    { send({ cmd: 'sschk', data: '' }); }
+function getLevelList() { send({ cmd: 'lbll',  data: { gameID: '2' } }); }
+function getRoomList()  { send({ cmd: 'lbrl',  data: { gameID: '2', typeID: 1, levelID: 1 } }); }
+function enterRoom()    { send({ cmd: 'lbsr',  data: { gameID: '2', roomNo: 1 } }); }
+function disconnect()   {
+    send({ cmd: 'usdis', data: '' });
+    setTimeout(() => { ws.close(); }, 300);
+}
+function clearLog()     { document.getElementById('log').innerHTML = ''; }
+</script>
+</body>
+</html>

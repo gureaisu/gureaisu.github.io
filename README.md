@@ -53,6 +53,61 @@ Translation
 - [🇨🇳  中文文档（有点过时）](https://github.com/Huxpro/huxpro.github.io/blob/master/_doc/README.zh.md)
 
 
+新增文章流程
+-----------
+
+### 1. 建立文章
+
+在 `_posts/` 資料夾新增 Markdown 檔案，檔名格式為 `YYYY-MM-DD-文章標題.md`：
+
+```
+_posts/2026-03-03-my-post.md
+```
+
+文章開頭需加上 Front Matter：
+
+```yaml
+---
+layout:       post
+title:        "文章標題"
+author:       "Acheng"
+header-style: text
+catalog:      true
+tags:
+    - 標籤1
+    - 標籤2
+---
+
+文章內容從這裡開始...
+```
+
+### 2. 附加檔案（如有 demo 或附件）
+
+在 `files/` 資料夾下建立與文章同名的子資料夾，將相關檔案放入：
+
+```
+files/
+└── 2026-03-03-my-post/
+    ├── index.html
+    ├── demo.js
+    └── example.json
+```
+
+在文章中用以下格式連結：
+
+```markdown
+[查看 Demo](/files/2026-03-03-my-post/index.html)
+[下載範例](/files/2026-03-03-my-post/example.json)
+```
+
+### 3. 部署
+
+commit + push 到 `master`，GitHub Actions 自動 build，幾分鐘後網站更新。
+
+```
+_posts/ 新增文章 → commit → push to master → GitHub Actions build → 網站更新
+```
+
 License
 -------
 
