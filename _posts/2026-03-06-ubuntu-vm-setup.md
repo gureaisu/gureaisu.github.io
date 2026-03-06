@@ -1,6 +1,6 @@
 ---
 layout:       post
-title:        "地端建立 Ubuntu VM 主機與安裝 Docker"
+title:        "VMWare建立 Ubuntu VM 主機與安裝 Docker"
 author:       "Acheng"
 header-style: text
 catalog:      true
