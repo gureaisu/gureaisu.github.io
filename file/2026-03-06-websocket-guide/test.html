@@ -94,10 +94,10 @@ function send(obj) {
 }
 
 function connect() {
-    ws = new WebSocket('ws://127.0.0.1:10001');
+    ws = new WebSocket('ws://127.0.0.1:9001');
 
     ws.onopen = () => {
-        log('✅ 連線成功 ws://127.0.0.1:10001', 'system');
+        log('✅ 連線成功 ws://127.0.0.1:9001', 'system');
         setConnected(true);
         // 自動每 30 秒送心跳
         heartbeatTimer = setInterval(() => {
