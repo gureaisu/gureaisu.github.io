@@ -1,6 +1,6 @@
 ---
 layout:       post
-title:        "遊戲伺服器系統架構說明"
+title:        "GameServer 系統架構說明"
 author:       "Acheng"
 header-style: text
 catalog:      true
@@ -28,8 +28,17 @@ tags:
     │  (Client)  │        │  每分鐘觸發 gs_check  │
     └──────┬──────┘        └──────────┬───────────┘
            │                          │
-           │ wss://                   │ HTTPS GET /gs_check
+           │ 1. 先呼叫後端 API         │ HTTPS GET /gs_check
+           │    取得分配的 GS URL      │
            ▼                          ▼
+    ┌─────────────────────┐
+    │    後端 REST API     │
+    │  計算分配到哪台 GS   │
+    │  回傳 wss:// URL    │
+    └──────┬──────────────┘
+           │
+           │ 2. 用回傳 URL 建立 WebSocket
+           ▼
 ┌──────────────────────────────────────────────────────────┐
 │                  GCP / lb-nginx                          │
 │                                                          │
@@ -122,19 +131,24 @@ tags:
 ### 3.1 玩家連線流程
 
 ```
-1. 玩家 App 向後端 REST API 查詢要連哪台 GS
-   GET /GameServer/Get
-   回傳：[{ "id":1, "url":"wss://pk-gs-qa.ceis.tw", "isDead":0 }, ...]
+1. 玩家 App 向後端 REST API 請求登入
+   後端 API 進行身份驗證，並計算分配到哪台 GS
+   （依各台負載、isDead 狀態等條件決定）
 
-2. 玩家 App 建立 WebSocket 連線
-   wss://pk-gs-qa.ceis.tw → Nginx → ws://10.148.0.2:10001
+2. 後端 API 回傳指定的 GS WebSocket 網址
+   回傳：{ "gsUrl": "wss://pk-gs-qa.ceis.tw", ... }
 
-3. 玩家送出登入指令
+3. 玩家 App 用回傳的網址建立 WebSocket 連線
+   wss://pk-gs-qa.ceis.tw
+       ↓ lb-nginx SSL 終止
+   ws://10.148.0.2:10001（GS:1 內網）
+
+4. 玩家送出登入指令
    {"cmd":"ln","data":{"account":"xxx","key":"yyy"}}
 
-4. GS 驗證（呼叫後端 API），成功後回傳玩家資料
+5. GS 向後端 API 驗證帳號，成功後回傳玩家資料
 
-5. 玩家進入大廳，取得房間列表並進房遊戲
+6. 玩家進入大廳，取得房間列表並進房遊戲
 ```
 
 ### 3.2 訊息格式
