@@ -375,6 +375,9 @@ ENTRYPOINT ["./XpgServerLinux"]
 
 ### systemd 服務（讓伺服器開機自動啟動）
 
+採用「**可攜模板**」做法：  
+`xpgserver.service` 固定不變，local / GCP VM 只需改 `/etc/default/xpgserver`。
+
 ```ini
 # /etc/systemd/system/xpgserver.service
 [Unit]
@@ -383,11 +386,11 @@ After=network.target
 
 [Service]
 Type=simple
-# 若要以非 root 執行，請先確保 /srv/xpgserver 與檔案擁有者為該帳號，並取消下行註解：
-# User=deployuser
-# Group=deployuser
-WorkingDirectory=/srv/xpgserver
-ExecStart=/srv/xpgserver/XpgServerLinux
+EnvironmentFile=/etc/default/xpgserver
+User=%E{XPG_USER}
+Group=%E{XPG_GROUP}
+WorkingDirectory=%E{XPG_WORKDIR}
+ExecStart=%E{XPG_WORKDIR}/XpgServerLinux
 Restart=on-failure
 RestartSec=10
 
@@ -396,6 +399,19 @@ WantedBy=multi-user.target
 ```
 
 ```bash
+# /etc/default/xpgserver（每台主機自行設定）
+sudo tee /etc/default/xpgserver > /dev/null <<'EOF'
+XPG_USER=deployuser
+XPG_GROUP=deployuser
+XPG_WORKDIR=/srv/xpgserver
+EOF
+```
+
+> `deployuser` 請替換為該主機實際部署帳號（例如 local: `gameserver01`、GCP VM: `xpgsvc`）。  
+> 路徑也可替換，例如 `/home/deployuser/xpgserver`。
+
+```bash
+sudo systemctl daemon-reload
 systemctl enable xpgserver
 systemctl start xpgserver
 systemctl status xpgserver
