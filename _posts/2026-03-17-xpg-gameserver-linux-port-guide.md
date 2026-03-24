@@ -234,6 +234,75 @@ namespace CECom
 
 ## 部署方式
 
+### Local 佈建（Windows 開發者常用）
+
+> 適用情境：開發人員在 Windows 本機 build，再部署到內網 Linux 主機測試（例如 `192.168.1.137`）。
+
+#### 1) 在 Windows（PowerShell）建置 Linux 發佈檔
+
+```powershell
+# 建議在 repo 根目錄執行
+dotnet publish "GameServerLinux/XpgServerLinux.csproj" -c Release -r linux-x64 --self-contained true -o "./publish/linux"
+```
+
+> PowerShell 不能使用 bash 的 `\` 換行，若要換行請用反引號 `` ` ``，或直接用單行指令。
+
+#### 2) 確認發佈產物
+
+```powershell
+Get-ChildItem ".\publish\linux"
+```
+
+至少要看到：
+
+- `XpgServerLinux`（可執行檔）
+- `NLog.json`（若缺少，程式啟動時會自動建立預設檔）
+- 其餘 .NET runtime 相關檔案
+
+#### 3) 上傳到 Linux 主機（scp）
+
+```powershell
+scp -r ".\publish\linux\*" user@192.168.1.137:/opt/xpgserver/
+```
+
+> 將 `user` 改成 Linux 帳號。  
+> 若你使用 WinSCP / SMB 也可手動複製到 `/opt/xpgserver`。
+
+#### 4) 補上 `_setting/`（可手動）
+
+你已確認 `_setting` 會手動加入，請確認路徑如下：
+
+```text
+/opt/xpgserver/
+  ├── XpgServerLinux
+  ├── NLog.json
+  └── _setting/
+      ├── _Config.json
+      ├── _System.json
+      ├── content/
+      └── ...
+```
+
+#### 5) 在 Linux 啟動與檢查
+
+```bash
+ssh user@192.168.1.137
+cd /opt/xpgserver
+chmod +x ./XpgServerLinux
+./XpgServerLinux
+```
+
+若要看程序：
+
+```bash
+ps -ef | grep XpgServerLinux
+```
+
+若要暫停：
+
+- 前景執行：`Ctrl+C`
+- 背景服務：搭配 `systemd`
+
 ### Linux 生產環境建置
 
 ```bash
