@@ -259,21 +259,58 @@ Get-ChildItem ".\publish\linux"
 - `NLog.json`（若缺少，程式啟動時會自動建立預設檔）
 - 其餘 .NET runtime 相關檔案
 
-#### 3) 上傳到 Linux 主機（scp）
+#### 3) 在 Linux 主機建立「多人共用、固定路徑」目錄（僅需做一次）
 
-```powershell
-scp -r ".\publish\linux\*" user@192.168.1.137:/opt/xpgserver/
+建議使用 **`/srv/xpgserver`**：`/srv` 常用於本機服務資料，比 `/opt` 更適合放「可寫入、需部署帳號權限」的內容；一般使用者**無法**直接在 `/opt` 底下 `mkdir`，會出現 `Permission denied`。
+
+先 SSH 登入 Linux（需具備 `sudo`）：
+
+```bash
+ssh deployuser@192.168.1.137
 ```
 
-> 將 `user` 改成 Linux 帳號。  
-> 若你使用 WinSCP / SMB 也可手動複製到 `/opt/xpgserver`。
+**方案 A：單一部署帳號擁有目錄（最簡單）**
 
-#### 4) 補上 `_setting/`（可手動）
+將 `deployuser` 換成實際會執行 `scp`、啟動服務的帳號（例如 `gameserver01`）：
+
+```bash
+sudo mkdir -p /srv/xpgserver
+sudo chown deployuser:deployuser /srv/xpgserver
+sudo chmod 755 /srv/xpgserver
+```
+
+**方案 B：多人同群組共用（選用）**
+
+若多位開發者要以不同帳號上傳、維護同一目錄：
+
+```bash
+sudo groupadd xpgserver 2>/dev/null || true
+sudo usermod -aG xpgserver deployuserA
+sudo usermod -aG xpgserver deployuserB
+
+sudo mkdir -p /srv/xpgserver
+sudo chown root:xpgserver /srv/xpgserver
+sudo chmod 2775 /srv/xpgserver
+```
+
+> `2775` 的 **setgid** 可讓在此目錄新建的檔案繼承群組 `xpgserver`（依發行版與 umask 略有差異）。  
+> 變更群組後，使用者需**重新登入**或 `newgrp xpgserver` 才會生效。
+
+#### 4) 從 Windows 上傳到 Linux（scp）
+
+```powershell
+scp -r ".\publish\linux\*" deployuser@192.168.1.137:/srv/xpgserver/
+```
+
+> 將 `deployuser` 改成 Linux 帳號。  
+> 若你使用 WinSCP / SMB 也可手動複製到 `/srv/xpgserver`。
+
+#### 5) 補上 `_setting/`（可手動）
 
 你已確認 `_setting` 會手動加入，請確認路徑如下：
 
 ```text
-/opt/xpgserver/
+/srv/xpgserver/
   ├── XpgServerLinux
   ├── NLog.json
   └── _setting/
@@ -283,11 +320,11 @@ scp -r ".\publish\linux\*" user@192.168.1.137:/opt/xpgserver/
       └── ...
 ```
 
-#### 5) 在 Linux 啟動與檢查
+#### 6) 在 Linux 啟動與檢查
 
 ```bash
-ssh user@192.168.1.137
-cd /opt/xpgserver
+ssh deployuser@192.168.1.137
+cd /srv/xpgserver
 chmod +x ./XpgServerLinux
 ./XpgServerLinux
 ```
@@ -313,11 +350,11 @@ dotnet publish GameServerLinux/XpgServerLinux.csproj \
   --self-contained true \
   -o ./publish/linux
 
-# 上傳到 GCE VM
-gcloud compute scp ./publish/linux/* your-vm:/opt/xpgserver/ --zone=asia-east1-b
+# 上傳到 GCE VM（使用 gcloud 或 scp；目錄請先於 VM 上建立並授權，見「Local 佈建」步驟 3）
+gcloud compute scp ./publish/linux/* your-vm:/srv/xpgserver/ --zone=asia-east1-b
 
 # 啟動
-ssh your-vm "cd /opt/xpgserver && ./XpgServerLinux"
+ssh your-vm "cd /srv/xpgserver && ./XpgServerLinux"
 ```
 
 ### Dockerfile（可選，用於 GKE 部署）
@@ -336,7 +373,7 @@ COPY _setting/ ./_setting/
 ENTRYPOINT ["./XpgServerLinux"]
 ```
 
-### systemd 服務（開機自動啟動）
+### systemd 服務（讓伺服器開機自動啟動）
 
 ```ini
 # /etc/systemd/system/xpgserver.service
@@ -346,8 +383,11 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/xpgserver
-ExecStart=/opt/xpgserver/XpgServerLinux
+# 若要以非 root 執行，請先確保 /srv/xpgserver 與檔案擁有者為該帳號，並取消下行註解：
+# User=deployuser
+# Group=deployuser
+WorkingDirectory=/srv/xpgserver
+ExecStart=/srv/xpgserver/XpgServerLinux
 Restart=on-failure
 RestartSec=10
 
@@ -384,16 +424,16 @@ Windows 不分大小寫，Linux 嚴格分大小寫。
 
 ## 實作順序
 
-- Step 1：在 `FormMain.cs` 修改 `Application.StartupPath`（1 行）
-- Step 2：新增 `IServerView.cs`
-- Step 3：`FormMain` 宣告實作 `IServerView`
-- Step 4：`Program.cs` 加入 `View` 靜態屬性，`ShowToForm` 改透過介面
-- Step 5：新增 `ConsoleView.cs`
-- Step 6：新增 `GameServerLinux/` 資料夾與 `XpgServerLinux.csproj`
-- Step 7：新增 `Program.Linux.cs`
-- Step 8：加入 `.sln` 方案，確認兩個專案都能 Build 成功
-- Step 9：在 Windows 執行 Linux 版本，驗證功能正常
-- Step 10：部署至 Linux GCE VM 測試
+- [ ] Step 1：在 `FormMain.cs` 修改 `Application.StartupPath`（1 行）
+- [ ] Step 2：新增 `IServerView.cs`
+- [ ] Step 3：`FormMain` 宣告實作 `IServerView`
+- [ ] Step 4：`Program.cs` 加入 `View` 靜態屬性，`ShowToForm` 改透過介面
+- [ ] Step 5：新增 `ConsoleView.cs`
+- [ ] Step 6：新增 `GameServerLinux/` 資料夾與 `XpgServerLinux.csproj`
+- [ ] Step 7：新增 `Program.Linux.cs`
+- [ ] Step 8：加入 `.sln` 方案，確認兩個專案都能 Build 成功
+- [ ] Step 9：在 Windows 執行 Linux 版本，驗證功能正常
+- [ ] Step 10：部署至 Linux GCE VM 測試
 
 ---
 
