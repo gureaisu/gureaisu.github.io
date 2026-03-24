@@ -399,22 +399,54 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# /etc/default/xpgserver（每台主機自行設定）
+# 1) 建立固定 service（所有環境共用，通常只需做一次）
+sudo tee /etc/systemd/system/xpgserver.service > /dev/null <<'EOF'
+[Unit]
+Description=XPG Game Server
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/xpgserver
+User=%E{XPG_USER}
+Group=%E{XPG_GROUP}
+WorkingDirectory=%E{XPG_WORKDIR}
+ExecStart=%E{XPG_WORKDIR}/XpgServerLinux
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 2) 建立該主機的環境變數（每台主機需設定一次）
 sudo tee /etc/default/xpgserver > /dev/null <<'EOF'
 XPG_USER=deployuser
 XPG_GROUP=deployuser
 XPG_WORKDIR=/srv/xpgserver
 EOF
+
+# 3) 建立工作目錄並授權（避免 NLog.json / log 無法寫入）
+sudo mkdir -p /srv/xpgserver
+sudo chown -R deployuser:deployuser /srv/xpgserver
+sudo chmod 755 /srv/xpgserver
+
+# 4) 套用並啟用自動啟動
+sudo systemctl daemon-reload
+sudo systemctl enable xpgserver
+sudo systemctl restart xpgserver
+sudo systemctl status xpgserver --no-pager -l
 ```
 
 > `deployuser` 請替換為該主機實際部署帳號（例如 local: `gameserver01`、GCP VM: `xpgsvc`）。  
 > 路徑也可替換，例如 `/home/deployuser/xpgserver`。
 
 ```bash
-sudo systemctl daemon-reload
-systemctl enable xpgserver
-systemctl start xpgserver
+# 驗證：主機重啟後仍自動啟動
+sudo reboot
+# 重連後執行
 systemctl status xpgserver
+ss -ltnp | grep 10001
 ```
 
 ---
