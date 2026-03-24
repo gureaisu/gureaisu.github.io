@@ -375,8 +375,8 @@ ENTRYPOINT ["./XpgServerLinux"]
 
 ### systemd 服務（讓伺服器開機自動啟動）
 
-採用「**可攜模板**」做法：  
-`xpgserver.service` 固定不變，local / GCP VM 只需改 `/etc/default/xpgserver`。
+預設主方案採用「**穩定版（無 EnvironmentFile）**」：  
+直接在 service 寫死 `User/Group/WorkingDirectory/ExecStart`，避免環境變數檔格式或解析差異造成啟動失敗。
 
 ```ini
 # /etc/systemd/system/xpgserver.service
@@ -386,11 +386,10 @@ After=network.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/default/xpgserver
-User=%E{XPG_USER}
-Group=%E{XPG_GROUP}
-WorkingDirectory=%E{XPG_WORKDIR}
-ExecStart=%E{XPG_WORKDIR}/XpgServerLinux
+User=deployuser
+Group=deploygroup
+WorkingDirectory=/srv/xpgserver
+ExecStart=/srv/xpgserver/XpgServerLinux
 Restart=on-failure
 RestartSec=10
 
@@ -399,7 +398,7 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# 1) 建立固定 service（所有環境共用，通常只需做一次）
+# 1) 建立固定 service（穩定版）
 sudo tee /etc/systemd/system/xpgserver.service > /dev/null <<'EOF'
 [Unit]
 Description=XPG Game Server
@@ -407,11 +406,10 @@ After=network.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/default/xpgserver
-User=%E{XPG_USER}
-Group=%E{XPG_GROUP}
-WorkingDirectory=%E{XPG_WORKDIR}
-ExecStart=%E{XPG_WORKDIR}/XpgServerLinux
+User=deployuser
+Group=deploygroup
+WorkingDirectory=/srv/xpgserver
+ExecStart=/srv/xpgserver/XpgServerLinux
 Restart=on-failure
 RestartSec=10
 
@@ -419,27 +417,21 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# 2) 建立該主機的環境變數（每台主機需設定一次）
-sudo tee /etc/default/xpgserver > /dev/null <<'EOF'
-XPG_USER=deployuser
-XPG_GROUP=deployuser
-XPG_WORKDIR=/srv/xpgserver
-EOF
-
-# 3) 建立工作目錄並授權（避免 NLog.json / log 無法寫入）
+# 2) 建立工作目錄並授權（避免 NLog.json / log 無法寫入）
 sudo mkdir -p /srv/xpgserver
-sudo chown -R deployuser:deployuser /srv/xpgserver
+sudo chown -R deployuser:deploygroup /srv/xpgserver
 sudo chmod 755 /srv/xpgserver
 
-# 4) 套用並啟用自動啟動
+# 3) 套用並啟用自動啟動
 sudo systemctl daemon-reload
 sudo systemctl enable xpgserver
 sudo systemctl restart xpgserver
 sudo systemctl status xpgserver --no-pager -l
 ```
 
-> `deployuser` 請替換為該主機實際部署帳號（例如 local: `gameserver01`、GCP VM: `xpgsvc`）。  
-> 路徑也可替換，例如 `/home/deployuser/xpgserver`。
+> `deployuser` / `deploygroup` 請替換為該主機實際帳號與群組。  
+> 例：local 可用 `gameserver01`/`xpgserver`；GCP VM 可用 `xpgsvc`/`xpgsvc`。  
+> 路徑可改成其他位置（如 `/home/deployuser/xpgserver`），並同步更新 `WorkingDirectory` 與 `ExecStart`。
 
 ```bash
 # 驗證：主機重啟後仍自動啟動
