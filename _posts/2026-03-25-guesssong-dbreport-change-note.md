@@ -45,52 +45,61 @@ tags:
 
 ```mermaid
 erDiagram
+  %% 整場集合 → 單局彙總 → 每人注單。欄位尾端雙引號內為 Mermaid 官方「註解」語法，等同多一欄說明（非額外 DB 欄位名）
   T_GameRoundSet ||--o{ T_GameRound : "GameRoundSetId FK 由 SP 事後 UPDATE"
   T_GameRound ||--o{ T_Bet : "GameRoundId 由 GameRoundReportAdd 回填"
   T_Member ||--o{ T_Bet : MemberId
   T_Currency ||--o{ T_Bet : CurrencyId
 
   T_GameRoundSet {
-    int Id PK
-    varchar GSRoundSetId
-    datetime StartTime
-    decimal TotalBet
+    int Id PK "主鍵"
+    varchar GSRoundSetId "整場識別鍵，語意同報表 GSRoundSetId"
+    datetime StartTime "整場開始時間（示意；詳見實際 schema）"
+    decimal TotalBet "整場彙總投注（示意）"
   }
 
   T_GameRound {
-    int Id PK
-    int GameId
-    datetime StartTime
-    decimal TotalBet
-    decimal Odds
-    int GameRoundSetId
-    varchar GSRoundId
-    varchar GSRoundSetId
+    int Id PK "主鍵；寫入局報表後用來回填 T_Bet.GameRoundId"
+    int GameId "遊戲代號"
+    datetime StartTime "該輪／該局開始時間"
+    decimal TotalBet "該輪彙總 Bet（猜歌常為 0）"
+    decimal Odds "該輪賠率；猜歌常為 0"
+    int GameRoundSetId "歸屬整場集合；多由 SP 事後 UPDATE"
+    varchar GSRoundId "該輪識別鍵，對齊注單 GSRoundId"
+    varchar GSRoundSetId "整場鍵冗餘存放，便於查詢"
   }
 
   T_Bet {
-    int Id PK
-    int MemberId
-    int GameId
-    int GameRoundId
-    varchar GSRoundId
-    int CurrencyId
-    decimal Bet
-    datetime Created
-    int StreamChannelId
-    int RoundNo
-    varchar RoomCode
-    varchar SongTitle
-    varchar ArtistName
-    varchar PlayerAnswer
-    decimal AnswerTimeSec
-    int IsCorrect
-    int TotalScore
-    int FinalRank
+    int Id PK "注單主鍵"
+    int MemberId "會員 Id，對應 T_Member"
+    int GameId "遊戲 Id"
+    int GameRoundId "所屬局；局報表寫入前可為 NULL，回填後有值"
+    varchar GSRoundId "該輪鍵；與 T_GameRound 對齊"
+    int CurrencyId "幣別 Id，對應 T_Currency"
+    decimal Bet "下注額；猜歌零下注語意下常為 0"
+    datetime Created "建立時間"
+    int StreamChannelId "登入來源等，對應 StreamChannelId 語意"
+    int RoundNo "第幾輪；猜歌擴充"
+    varchar RoomCode "房間代碼；猜歌擴充"
+    varchar SongTitle "本輪標準歌名；猜歌擴充"
+    varchar ArtistName "歌手；猜歌擴充"
+    varchar PlayerAnswer "玩家提交答案；猜歌擴充"
+    decimal AnswerTimeSec "作答秒數；猜歌擴充"
+    int IsCorrect "是否答對 0/1；猜歌擴充"
+    int TotalScore "本輪結算後累積總分；猜歌擴充"
+    int FinalRank "終局名次；插入為 NULL，最後一輪列事後 UPDATE"
+  }
+
+  T_Member {
+    string 圖註 "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際會員欄位"
+  }
+
+  T_Currency {
+    string 圖註 "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際幣別欄位"
   }
 ```
 
-此寫法刻意對齊你截圖的風格：**主表方塊只列重點欄位**、**關聯線上帶中文說明**；`T_Member`／`T_Currency` 僅透過關聯線出現（多數 Mermaid 渲染器會顯示空表頭方塊，等同截圖「不列屬性」）。
+此寫法刻意對齊你截圖的風格：**主表方塊只列重點欄位**、**關聯線上帶中文說明**；`T_Member`／`T_Currency` 以小方塊附 **圖註**（僅說明外鍵語意，不代表實際表僅一欄）。欄位尾端雙引號為 Mermaid 內建註解，渲染時通常顯示在欄位旁／第二欄說明。
 
 - **圖示說明**：`T_Bet` 圖中已含 **修後** 猜歌擴充欄位（`RoundNo`～`FinalRank`）；其餘財務欄位（`BetTime`、`SettleTime`、`Payout`、`WinLose`、`Rake`、`Odds` 等）實際在 [temp/battle.sql](temp/battle.sql) 仍存在，此處為版面精簡未畫出。
 - `T_Bet`（約 605–622 行）：注單；**修前**僅至 `StreamChannelId` 與財務欄位，無猜歌明細；修後見上圖與 §2.1。
