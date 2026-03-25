@@ -220,9 +220,42 @@ erDiagram
 - 輪次 → `RoundNo`。  
 - `gsfr.myRank` → 僅在最後一輪對應之 `GSRoundId` 列更新 `FinalRank`。
 
+### 3.4 猜歌報表直連 MySQL（可選）
+
+若不走 XPG Adapter 的 HTTP，改為 GameServer **直接連 `battle`（或同等 schema）並呼叫預存程序**，可依下列方式啟用：
+
+1. **設定檔**（與程式同邏輯之 `_setting/_Config.json`）  
+   - 新增或填入 **`GuessSong_Report_ConnString`**：標準 ADO.NET MySQL 連線字串，例如  
+     `Server=…;Port=3306;Database=battle;User ID=…;Password=…;`  
+     （`SslMode` 等依環境補上。）  
+   - **留空**：猜歌報表僅在 `SystemRunMode` 為 XPG API 模式時，透過 §4 之 REST 寫庫；與舊行為一致。
+
+2. **路由規則**  
+   - 只要 **`GuessSong_Report_ConnString` 非空白**，`GuessSongLobbyAdapter` 之 **個人報表、局報表、終局名次** 三處一律使用直連，**不**再呼叫 `Report/MemberReportAdd`、`Report/GameRoundReportAdd`、`Report/MemberBetSetFinalRank`。  
+   - 登入、錢包等仍依 **`DB_ConnString`／`Wallet_ConnString`** 與 `SystemRunMode`（與直連字串無關）。
+
+3. **呼叫的 SP（須與 DB 已部署之 [battle_T_Bet_guesssong_migration.sql](temp/battle_T_Bet_guesssong_migration.sql)／[battle.sql](temp/battle.sql) 一致）**  
+
+   | 用途 | 預存程序 |
+   |------|----------|
+   | 每人每輪注單 | `sp_Game_MemberReportAdd` |
+   | 該輪局彙總並回填 `T_Bet.GameRoundId` | `sp_Game_GameRoundReportAdd` |
+   | 終局名次 | `sp_Game_MemberBetSetFinalRank` |
+
+4. **實作備註**  
+   - **時間欄位**：直連路徑以 **UTC** 寫入 `p_BetTime`／`p_SettleTime`／`p_Created`（及局報表之起迄、結算時間）；若營運要以伺服器本地或他區時區落庫，請調整連線時區或程式內轉換。  
+   - **`GameID`**：`LobbyAdapter.GameID` 須為可解析之 **整數**字串，以對應 SP 之 `p_GameId`。  
+   - **`p_Currency`**：仍來自玩家 `OptionParas`（`XpgSystemParas.Currency`）；空白時依既有 `T_Currency`／SP 邏輯可能得到 `CurrencyId = 0`，測試模式需留意。  
+   - **相依**：專案套件 **MySqlConnector**；實作見 [GuessSongReportMySqlDirect.cs](GameServer/DB/GuessSongReportMySqlDirect.cs)。
+
+5. **安全**  
+   - 連線字串含帳密，僅放本機或部署秘密管理，**勿**提交版控（與 §6 一致）。
+
 ---
 
 ## 4. XPG Adapter API（pk-game-adapter）須配合事項
+
+**註**：若已依 **§3.4** 設定 `GuessSong_Report_ConnString`，猜歌報表**不會**經過下列 API；下列項目僅在**未啟用直連**且走 XPG 時適用。
 
 GameServer 目前假設：
 
@@ -253,4 +286,4 @@ GameServer 目前假設：
 
 | 日期 | 說明 |
 |------|------|
-| 2026-03-25 | 初版：`T_Bet` 擴充、`sp_Game_MemberReportAdd`／`sp_Game_MemberBetSetFinalRank`、GuessSong GameServer 與 API 預期行為；並補充 §1.3 多遊戲共用 `T_Bet` 之設計取捨與後續拆副表之演進方向。 |
+| 2026-03-25 | `T_Bet`／SP／GameServer 初版；§1.3 多遊戲共用 `T_Bet` 取捨。同日補 **§3.4 直連 MySQL**（`GuessSong_Report_ConnString`、`GuessSongReportMySqlDirect`、`MySqlConnector`）；§3.1、§1.2、§4 一併更新與 XPG API 之互斥條件。 |
