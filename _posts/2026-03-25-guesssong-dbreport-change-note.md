@@ -43,9 +43,10 @@ tags:
 
 ### 2.0 與報表寫入直接相關的三張表（摘自 schema）
 
+圖中欄位尾端雙引號為 Mermaid 內建註解（非 DB 欄位）。**注意**：`erDiagram` 在 Mermaid 10.9.x 不支援區塊內的 `%%` 行註解，且屬性名須為 ASCII（不可用中文當欄位名）。
+
 ```mermaid
 erDiagram
-  %% 整場集合 → 單局彙總 → 每人注單。欄位尾端雙引號內為 Mermaid 官方「註解」語法，等同多一欄說明（非額外 DB 欄位名）
   T_GameRoundSet ||--o{ T_GameRound : "GameRoundSetId FK 由 SP 事後 UPDATE"
   T_GameRound ||--o{ T_Bet : "GameRoundId 由 GameRoundReportAdd 回填"
   T_Member ||--o{ T_Bet : MemberId
@@ -91,15 +92,15 @@ erDiagram
   }
 
   T_Member {
-    string 圖註 "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際會員欄位"
+    string NOTE "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際會員欄位"
   }
 
   T_Currency {
-    string 圖註 "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際幣別欄位"
+    string NOTE "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際幣別欄位"
   }
 ```
 
-此寫法刻意對齊你截圖的風格：**主表方塊只列重點欄位**、**關聯線上帶中文說明**；`T_Member`／`T_Currency` 以小方塊附 **圖註**（僅說明外鍵語意，不代表實際表僅一欄）。欄位尾端雙引號為 Mermaid 內建註解，渲染時通常顯示在欄位旁／第二欄說明。
+此寫法的風格：**主表方塊只列重點欄位**、**關聯線上帶中文說明**；`T_Member`／`T_Currency` 以小方塊附 **`NOTE` 假欄位**（僅說明外鍵語意，不代表實際表僅一欄；假欄位名須 ASCII 方可通過 Mermaid 10.9.x 解析）。欄位尾端雙引號為 Mermaid 內建註解，渲染時通常顯示在欄位旁／第二欄說明。
 
 - **圖示說明**：`T_Bet` 圖中已含 **修後** 猜歌擴充欄位（`RoundNo`～`FinalRank`）；其餘財務欄位（`BetTime`、`SettleTime`、`Payout`、`WinLose`、`Rake`、`Odds` 等）實際在 [temp/battle.sql](temp/battle.sql) 仍存在，此處為版面精簡未畫出。
 - `T_Bet`（約 605–622 行）：注單；**修前**僅至 `StreamChannelId` 與財務欄位，無猜歌明細；修後見上圖與 §2.1。
