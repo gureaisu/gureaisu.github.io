@@ -54,9 +54,9 @@ erDiagram
 
   T_GameRoundSet {
     int Id PK "主鍵"
-    varchar GSRoundSetId "整場識別鍵，語意同報表 GSRoundSetId"
-    datetime StartTime "整場開始時間（示意；詳見實際 schema）"
-    decimal TotalBet "整場彙總投注（示意）"
+    varchar GSRoundSetId "整場識別鍵"
+    datetime StartTime "整場開始時間"
+    decimal TotalBet "整場彙總投注"
   }
 
   T_GameRound {
@@ -92,11 +92,11 @@ erDiagram
   }
 
   T_Member {
-    string NOTE "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際會員欄位"
+    string NOTE "僅表示與 T_Bet 之外鍵關聯"
   }
 
   T_Currency {
-    string NOTE "僅表示與 T_Bet 之外鍵關聯，此圖不列出實際幣別欄位"
+    string NOTE "僅表示與 T_Bet 之外鍵關聯"
   }
 ```
 
