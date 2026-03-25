@@ -37,13 +37,20 @@ tags:
 3. 新增 `sp_Game_MemberBetSetFinalRank`，於整場結束後回填最後一輪注單的 `FinalRank`。  
 4. 在 GameServer 每輪結算與終局結算時帶入對應值，並經 XPG Adapter API 的 JSON（或日後直連 MySQL）寫庫。
 
+### 1.3 設計取捨：多遊戲共用 `T_Bet`
+
+**既有 `T_Bet` 的語意**較接近德州撲克等「注單／財務」模型（`Bet`、`Payout`、`WinLose` 等）。**猜歌**在同一張表上沿用同一條寫庫管線，但實際欄位意義不同（例如零下注時 `Bet=0`、本輪得分落在 `Payout`／`WinLose` 的約定），屬 **以 `GameId`（或遊戲種類）區分語意** 的做法。
+
+- **繼續把新遊戲寫進 `T_Bet` 的優點**：報表或營運統計可從**同一張主表**（搭配 `GameId` 過濾）撈取跨遊戲活動；亦較易沿用既有 Adapter、`sp_Game_MemberReportAdd` 等路徑，工程成本低。
+- **缺點與風險**：不同遊戲對同一欄位的解讀可能不同，文件與報表必須寫清楚；若每加一款就堆一批**僅該遊戲有意義**的可空欄位、或一再擴充 SP 參數，長期會難以維護。
+- **本專案現況**：在**款式數有限、欄位仍可控**的前提下，於 `T_Bet` 上擴充猜歌專用欄位屬合理演進。
+- **後續演進建議**：若**預期還會多款、且各遊戲欄位分支變多**，宜改為 **`T_Bet` 保留共用的注單殼**（會員、遊戲、局／輪、時間、幣別、財務摘要等），**遊戲專屬明細移至副表**（例如 `BetId` 外鍵、`T_BetGuessSong` 之類）；跨遊戲統計仍可透過 **VIEW、報表寬表或數倉** 做成「查詢上仍像一張表」，而不必讓 OLTP 單表承載全部語意。
+
 ---
 
 ## 2. 資料庫異動
 
 ### 2.0 與報表寫入直接相關的三張表（摘自 schema）
-
-圖中欄位尾端雙引號為 Mermaid 內建註解（非 DB 欄位）。**注意**：`erDiagram` 在 Mermaid 10.9.x 不支援區塊內的 `%%` 行註解，且屬性名須為 ASCII（不可用中文當欄位名）。
 
 ```mermaid
 erDiagram
@@ -113,17 +120,17 @@ erDiagram
 
 **修改後** — 在 `StreamChannelId` 之後新增：
 
-| 欄位 | 型別 | 說明 | 備註 |
-|------|------|------|------|
-| `RoundNo` | `int` NULL | 第幾輪 | 與客端 `gsq`/`gsrr` 的 `round` 對齊；方便報表不必再從 `GSRoundId` 字串拆解。 |
-| `RoomCode` | `varchar(32)` NULL | 房間代碼（如 `ZNWG8C`） | 與 `gsgi`／`gscr` 之 `roomCode` 一致；利於依房查詢。 |
-| `SongTitle` | `varchar(500)` NULL | 本輪標準歌名 | 對應結算後公布之答案（與 `gsrr.answer` 一致），非玩家輸入字串。 |
-| `ArtistName` | `varchar(500)` NULL | 歌手 | 對應 `gsrr.artistName`；分析熱門歌手／題目用。 |
-| `PlayerAnswer` | `varchar(500)` NULL | 玩家提交的答案 | 對應 `gsa` 送出內容；未作答可空值或約定占位（展示用）。 |
-| `AnswerTimeSec` | `decimal(12,4)` NULL | 作答時間（秒） | 對應 `gsrr.myResult.answerTime`；未作答多為 `0`。 |
-| `IsCorrect` | `tinyint(1)` NULL | 本輪是否答對（0/1） | 對應 `gsrr.myResult.isCorrect`；`tinyint` 與圖中 `int` 示意可並存於文件，DB 以 migration 為準。 |
-| `TotalScore` | `int` NULL | **本輪結算後**之累積總分 | 對應 `gsrr.myResult.totalScore`；與同列 `Payout`（本輪得分）語意不同。 |
-| `FinalRank` | `int` NULL | 終局名次；插入時為 `NULL`，最後一輪之 `GSRoundId` 列事後 `UPDATE` | 對應 `gsfr.myRank`；僅最後一輪那批 `GSRoundId` 會被 `sp_Game_MemberBetSetFinalRank` 回填。 |
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| `RoundNo` | `int` NULL | 第幾輪 |
+| `RoomCode` | `varchar(32)` NULL | 房間代碼（如 `ZNWG8C`） |
+| `SongTitle` | `varchar(500)` NULL | 本輪標準歌名 |
+| `ArtistName` | `varchar(500)` NULL | 歌手 |
+| `PlayerAnswer` | `varchar(500)` NULL | 玩家提交的答案 |
+| `AnswerTimeSec` | `decimal(12,4)` NULL | 作答時間（秒） |
+| `IsCorrect` | `tinyint(1)` NULL | 本輪是否答對（0/1） |
+| `TotalScore` | `int` NULL | **本輪結算後**之累積總分 |
+| `FinalRank` | `int` NULL | 終局名次；插入時為 `NULL`，最後一輪之 `GSRoundId` 列事後 `UPDATE` |
 
 **注意**：`T_Bet` 仍保留原有財務欄位。猜歌零下注約定仍適用：`Bet=0`，本輪得分可放在 `Payout`／`WinLose`（與 [GameServer_DBAccess_SPReport.md](GameServer_DBAccess_SPReport.md) §10 一致）。
 
@@ -244,6 +251,6 @@ GameServer 目前假設：
 
 ## 7. 修訂紀錄
 
-| 日期 | 說明 | 備註 |
-|------|------|------|
-| 2026-03-25 | 初版：記錄 `T_Bet` 擴充、`sp_Game_MemberReportAdd`／`sp_Game_MemberBetSetFinalRank`、GuessSong GameServer 與 API 預期行為。 | 後續欄位或 SP 變更請同步更新 §2～§4 與 [GameServer_DBAccess_SPReport.md](GameServer_DBAccess_SPReport.md)。 |
+| 日期 | 說明 |
+|------|------|
+| 2026-03-25 | 初版：`T_Bet` 擴充、`sp_Game_MemberReportAdd`／`sp_Game_MemberBetSetFinalRank`、GuessSong GameServer 與 API 預期行為；並補充 §1.3 多遊戲共用 `T_Bet` 之設計取捨與後續拆副表之演進方向。 |
