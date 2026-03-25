@@ -384,3 +384,108 @@ flowchart TD
     C -->|"目前: ByXpgApi 呼叫 REST"| F[XPG API]
     E -->|"目前: ByXpgApi 呼叫 REST"| F
 ```
+
+---
+
+## 10. 對齊 `battle.sql`：猜歌整場／每輪鍵與寫入順序（實作約定）
+
+本節對應專案內 Schema 摘要見 [temp/battle.sql](temp/battle.sql) 之 `T_Bet`、`T_GameRound`、`sp_Game_MemberReportAdd`、`sp_Game_GameRoundReportAdd`。
+
+### 10.1 `GSRoundSetId` / `GSRoundId`（與 GameServer DTO）
+
+| 概念 | DB / SP | GameServer DTO 欄位 | GuessSong 來源（實作） |
+|------|---------|---------------------|------------------------|
+| 整場（一場猜歌自房主按下開始到結束） | `T_GameRound.GSRoundSetId`、`T_GameRoundSet.GSRoundSetId` | `SequenceID` | 房主 `gsst` 時指派：`{ContentID}-{RoomCode}-{RoomNo}-{UtcTicks}`（欄位 `m_reportSequenceId`，見 `GuessSong.Command.cs` / `GuessSong.cs`） |
+| 單輪 | `p_GSRoundId`、每輪一列 `T_GameRound`、`T_Bet.GSRoundId` | `InningID` = 輪次字串；`GSRoundId` = `SequenceID + "_" + InningID` | `InningID` = `m_currentRound.ToString()` |
+
+同一輪內所有玩家之 `T_Bet.GSRoundId` 必須相同，`sp_Game_GameRoundReportAdd` 執行後才會依該鍵將 `GameRoundId` 更新為新插入之 `T_GameRound.Id`。
+
+### 10.2 執行順序（單輪）
+
+1. 對該輪**每一位在房玩家**呼叫 `sp_Game_MemberReportAdd`（經 `WriteMemberReport` → `DbPara_GuessSongMemberReport`）。
+2. 再呼叫一次 `sp_Game_GameRoundReportAdd`（經 `WriteInningReport` → `DbPara_GuessSongInningReport`）。
+
+猜歌於 `SettleRound()` 分數累加後、`writeRoundDbReports()` 依上列順序排入背景佇列。
+
+### 10.3 `T_Bet` 欄位映射（猜歌零下注）
+
+| `T_Bet` / SP | 猜歌語意（本輪） |
+|--------------|------------------|
+| `Bet` | `0` |
+| `Payout` | 本輪得分 `roundScore`（與 `WinLose` 相同） |
+| `WinLose` | 本輪得分 `roundScore` |
+| `Rake`、`Odds` | `0`（API／直連 SP 時補齊） |
+| `GSRoundId` | 與本輪局報表相同 |
+
+猜歌明細欄位（輪次、房間代碼、歌名、歌手、玩家答案、作答秒、累積分、是否答對、終局名次）已落在 `T_Bet` 擴充欄位，並由 `sp_Game_MemberReportAdd`／`sp_Game_MemberBetSetFinalRank` 寫入；**Adapter API** 需將 JSON 對應到 SP 參數（見 §12）。
+
+### 10.4 `T_GameRound` 與局報表
+
+| 欄位 / SP | 猜歌示意 |
+|-----------|----------|
+| `TotalBet` | `0` |
+| `TotalPayout`、`WinLose` | 該輪所有玩家 `roundScore` 加總 |
+| `Odds` | `0`（GuessSong 無賠率） |
+
+API JSON 延伸欄位 `Round`、`SongAnswer`、`CorrectCount` 送 XPG 用；**目前 `T_GameRound` 表無歌名／輪次／答對人數欄位**，若以 MySQL 專用表保存需另行 migration。
+
+### 10.5 `sp_Game_GameRoundSetReportAdd`（整場集合）
+
+- **用途**：插入 `T_GameRoundSet` 並將同 `GSRoundSetId` 之多筆 `T_GameRound` 綁上 `GameRoundSetId`（整數 FK）。
+- **現況**：GuessSong **未**在程式中呼叫；若營運報表需「一場一筆」彙總，需另接 `WriteSequenceReport` 或直連該 SP，並與房主開始遊戲時之 `GSRoundSetId` 一致。
+
+---
+
+## 11. `T_Bet` 猜歌擴充後仍不在表內的資料
+
+以下仍**未**寫入 [temp/battle.sql](temp/battle.sql) 之 `T_Bet`／`T_GameRound`（若需要可再擴欄或另表）：
+
+- `gsfr` 的 `topPlayers` 完整陣列（目前僅每人最後一輪列有 `FinalRank`，名次可由 SQL 重算驗證）
+- `T_GameRound` 仍未存每輪標準答案／答對人數（局報表 JSON 有送 API；MySQL 表沿用舊財務欄位）
+
+---
+
+## 12. `T_Bet`／SP 修改前後差異（猜歌完整欄位）
+
+### 12.1 資料表 `T_Bet`
+
+| 項目 | 修改前 | 修改後 |
+|------|--------|--------|
+| 輪次 | 無（僅能從 `GSRoundId` 字串推敲） | `RoundNo` int NULL |
+| 房間代碼 | 無 | `RoomCode` varchar(32) NULL |
+| 標準歌名／歌手 | 無 | `SongTitle`、`ArtistName` varchar(500) NULL |
+| 玩家輸入答案 | 無 | `PlayerAnswer` varchar(500) NULL |
+| 作答時間 | 無 | `AnswerTimeSec` decimal(12,4) NULL |
+| 是否答對 | 無 | `IsCorrect` tinyint(1) NULL |
+| 累積總分 | 無 | `TotalScore` int NULL（本輪結算後） |
+| 終局名次 | 無 | `FinalRank` int NULL（最後一輪之 `GSRoundId` 列事後 UPDATE） |
+
+原有欄位（`MemberId`、`GameId`、`Bet`／`Payout`／`WinLose`…）不變；猜歌零下注與本輪分數仍見 §10.3。
+
+### 12.2 `sp_Game_MemberReportAdd`
+
+| 項目 | 修改前 | 修改後 |
+|------|--------|--------|
+| 參數個數 | 12 個 IN 參數 | 同上再加上 8 個可選參數（`p_RoundNo` … `p_TotalScore`，**DEFAULT NULL**），舊有 **Rocket／掃雷** 客戶端僅傳 12 個參數時，MySQL 8 會為尾端參數套用預設，**新欄位寫入 NULL** |
+| INSERT 欄位 | 不含上表擴充欄 | 一併寫入（`FinalRank` 固定插 `NULL`） |
+
+已執行之資料庫請套用 [temp/battle_T_Bet_guesssong_migration.sql](temp/battle_T_Bet_guesssong_migration.sql)；全新匯入可使用已更新的 [temp/battle.sql](temp/battle.sql)。
+
+### 12.3 新程序 `sp_Game_MemberBetSetFinalRank`
+
+| 項目 | 修改前 | 修改後 |
+|------|--------|--------|
+| 終局名次 | 無 | `sp_Game_MemberBetSetFinalRank(p_MemberId, p_GSRoundId, p_FinalRank)` 更新最後一輪該員之 `T_Bet.FinalRank` |
+
+### 12.4 GameServer / Adapter API
+
+| 項目 | 修改前 | 修改後 |
+|------|--------|--------|
+| `POST Report/MemberReportAdd` JSON | `TotalScore`、`IsCorrect`、`TeamIndex` 等 | 另含 `RoundNo`、`RoomCode`、`SongTitle`、`ArtistName`、`PlayerAnswer`、`AnswerTimeSec`（見 `GuessSongLobbyAdapter.Report.cs`） |
+| 終局名次 | 無 | `POST Report/MemberBetSetFinalRank`（body：`MemberId`、`GSRoundId`、`FinalRank`），由 `GuessSong.SettleFinal` → `WriteGuessSongMemberBetFinalRank` 呼叫 |
+
+**注意**：若 Adapter API 尚未實作新路徑或新參數映射，GameServer 會記錄錯誤；請在 **pk-game-adapter-api**／**Dao** 對齊 `MemberReportAdd` 與 `MemberBetSetFinalRank`（或改為 GameServer 直連 MySQL 呼叫上述 SP）。
+
+### 12.5 寫入值示例（呼應 `gsrr` 單輪一筆）
+
+以會員 11、第 2 輪答對為例：`RoundNo=2`，`RoomCode=ZNWG8C`，`SongTitle=第三人稱`，`ArtistName=JOLIN蔡依林`，`PlayerAnswer=第三人稱`，`AnswerTimeSec≈15.1209`，`IsCorrect=1`，`TotalScore=155`（該輪結算後累積），`Payout`/`WinLose`=本輪得分 155，`FinalRank` 於 `SettleFinal` 後對 `GSRoundId = {SequenceID}_5` 那批列更新為 1／2／3。
