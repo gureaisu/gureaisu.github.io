@@ -328,3 +328,7 @@
         });
     });
 </script>
+
+{% if site.mermaid and page.mermaid != false %}
+{% include mermaid_support.html %}
+{% endif %}

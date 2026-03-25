@@ -35,6 +35,9 @@ exclude:
     "README.zh.md",
   ]
 anchorjs: true # if you want to customize anchor. check out line:181 of `post.html`
+
+# Mermaid（erDiagram 等）：見 _includes/mermaid_support.html；單篇文章可設 mermaid: false 關閉
+mermaid: true
 # If you have timezone issue (e.g. #68) in China, uncomment to use this:
 #timezone: CN
 

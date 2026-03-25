@@ -1,0 +1,56 @@
+<!-- Mermaid：將 Rouge 產生的 pre>code.language-mermaid 轉成 div.mermaid 後渲染 -->
+<style>
+    .mermaid {
+        margin: 1.5em 0;
+        text-align: center;
+        overflow-x: auto;
+    }
+</style>
+<script>
+    (function () {
+        function transformBlocks() {
+            var sel = 'pre code.language-mermaid, pre code.language-Mermaid, pre code[data-lang="mermaid"]';
+            document.querySelectorAll(sel).forEach(function (code) {
+                var pre = code.parentElement;
+                if (!pre || pre.tagName !== 'PRE') return;
+                var inner = pre.parentElement;
+                var outer = inner && inner.parentElement;
+                var div = document.createElement('div');
+                div.className = 'mermaid';
+                div.textContent = code.textContent;
+                if (outer && outer.classList && outer.classList.contains('highlighter-rouge')) {
+                    outer.parentNode.replaceChild(div, outer);
+                } else if (inner && inner.classList && inner.classList.contains('highlight')) {
+                    inner.parentNode.replaceChild(div, inner);
+                } else {
+                    pre.parentNode.replaceChild(div, pre);
+                }
+            });
+        }
+
+        function runMermaid() {
+            transformBlocks();
+            var nodes = document.querySelectorAll('.mermaid');
+            if (!nodes.length) return;
+            if (typeof mermaid === 'undefined') return;
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'neutral',
+                securityLevel: 'strict'
+            });
+            mermaid.run({ querySelector: '.mermaid' });
+        }
+
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js';
+        s.async = true;
+        s.onload = function () {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', runMermaid);
+            } else {
+                runMermaid();
+            }
+        };
+        document.head.appendChild(s);
+    })();
+</script>
